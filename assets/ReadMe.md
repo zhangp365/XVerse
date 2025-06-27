@@ -25,7 +25,12 @@ If XVerseBench is helpful, please help to ⭐ the repo.
 
 If you find this project useful for your research, please consider citing our paper:
 ```bibtex
-% TODO: Please insert your BibTeX citation here when available.
+@article{chen2025xverse,
+  title={XVerse: Consistent Multi-Subject Control of Identity and Semantic Attributes via DiT Modulation},
+  author={Chen, Bowen and Zhao, Mengyi and Sun, Haomiao and Chen, Li and Wang, Xu and Du, Kang and Wu, Xinglong},
+  journal={arXiv preprint arXiv:2506.21416},
+  year={2025}
+}
 ```
 
 

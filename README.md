@@ -38,8 +38,8 @@ pip install -r requirements.txt
 
 Next, download the required checkpoints:
 ```bash
-cd checkpoints && \
-./download_ckpts.sh && \
+cd checkpoints
+bash ./download_ckpts.sh
 cd ..
 ```
 **Important**: You'll also need to download the face recognition model `model_ir_se50.pth` from [InsightFace_Pytorch](https://github.com/TreB1eN/InsightFace_Pytorch) and place it directly into the `./checkpoints/` folder.

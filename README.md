@@ -1,6 +1,4 @@
-# XVerse
-
-Official implementation of "XVerse: Consistent Multi-Subject Control of Identity and Semantic Attributes via DiT Modulation".
+# XVerse: Consistent Multi-Subject Control of Identity and Semantic Attributes via DiT Modulation
 
 <p align="center">
     <a href="https://arxiv.org/abs/2506.21416">
@@ -17,24 +15,16 @@ Official implementation of "XVerse: Consistent Multi-Subject Control of Identity
     </a>    
 </p>
 
----
-
 ## 🔥 News
 - **2025.6.26**: The code has been released!
 
----
-
 ![XVerse's capability in single/multi-subject personalization and semantic attribute control (pose, style, lighting)](sample/first_page.png)
-
----
 
 ## 📖 Introduction
 
 **XVerse** introduces a novel approach to multi-subject image synthesis, offering **precise and independent control over individual subjects** without disrupting the overall image latents or features. We achieve this by transforming reference images into offsets for token-specific text-stream modulation.
 
 This innovation enables high-fidelity, editable image generation where you can robustly control both **individual subject characteristics** (identity) and their **semantic attributes**. XVerse significantly enhances capabilities for personalized and complex scene generation.
-
----
 
 ## ⚡️ Quick Start
 
@@ -93,14 +83,14 @@ The demo provides detailed control over your input images:
 > * **Active Images**: Only images in **expanded** (un-collapsed) panels will be fed into the model. Collapsed image panels are ignored.
 
 ## Inference with XVerseBench
-First, you need to download the XVerseBench from [huggingface](https://huggingface.co/ByteDance/XVerse). To run inference with XVerseBench, execute the following command:
+
+![XVerseBench](sample/XVerseBench.png)
+
+First, please download XVerseBench according to the contents in the `assets` folder. Then, when running inference, please execute the following command:
 ```bash
 bash ./eval/eval_scripts/run_eval.sh
 ```
 The script will automatically evaluate the model on the XVerseBench dataset and save the results in the `./results` folder.
-
-<!-- ### Online HuggingFace Demo -->
----
 
 ## 📌 ToDo
 
@@ -114,13 +104,9 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 - [ ] Release huggingface space demo.
 - [ ] Release Benchmark Leaderboard.
 
----
-
 ## License
     
 The code in this project is licensed under Apache 2.0; the dataset is licensed under CC0, subject to the intellctual property owned by Bytedance. Meanwhile, the dataset is adapted from [dreambench++](https://dreambenchplus.github.io/), you should also comply with the license of dreambench++.
-    
----
     
 ##  Citation
 If XVerse is helpful, please help to ⭐ the repo.

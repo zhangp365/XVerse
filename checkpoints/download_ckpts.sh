@@ -29,4 +29,7 @@ huggingface-cli download facebook/dino-vits16 --local-dir ./dino-vits16
 echo "Downloading DPG VQA checkpoint..."
 huggingface-cli download xingjianleng/mplug_visual-question-answering_coco_large_en --local-dir ./mplug_visual-question-answering_coco_large_en
 
+echo "Downloading XVerse checkpoint..."
+huggingface-cli download ByteDance/XVerse --local-dir ./XVerse
+
 echo "All checkpoints are downloaded successfully."

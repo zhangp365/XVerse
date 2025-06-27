@@ -2,6 +2,8 @@
 
 Official implementation of "XVerse: Consistent Multi-Subject Control of Identity and Semantic Attributes via DiT Modulation".
 
+![Arxiv Paper](https://arxiv.org/abs/2506.21416) ![Project Page](https://bytedance.github.io/XVerse/) ![XverseBench](https://github.com/bytedance/XVerse/tree/main/assets) ![Models](https://huggingface.co/ByteDance/XVerse)
+
 ---
 
 ## 🔥 News

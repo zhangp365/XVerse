@@ -2,7 +2,20 @@
 
 Official implementation of "XVerse: Consistent Multi-Subject Control of Identity and Semantic Attributes via DiT Modulation".
 
-![Arxiv Paper](https://arxiv.org/abs/2506.21416) ![Project Page](https://bytedance.github.io/XVerse/) ![XverseBench](https://github.com/bytedance/XVerse/tree/main/assets) ![Models](https://huggingface.co/ByteDance/XVerse)
+<p align="center">
+    <a href="https://arxiv.org/abs/2506.21416">
+            <img alt="Build" src="https://img.shields.io/badge/arXiv%20paper-2506.21416-b31b1b.svg">
+    </a>
+    <a href="https://bytedance.github.io/XVerse/">
+        <img alt="Project Page" src="https://img.shields.io/badge/Project-Page-blue">
+    </a>
+    <a href="[https://huggingface.co/Shitao/OmniGen-v1](https://github.com/bytedance/XVerse/tree/main/assets)">
+        <img alt="Build" src="https://img.shields.io/badge/XVerseBench-Dataset-green">
+    </a>    
+    <a href="[https://huggingface.co/Shitao/OmniGen-v1](https://huggingface.co/ByteDance/XVerse)">
+        <img alt="Build" src="https://img.shields.io/badge/🤗-HF%20Model-yellow">
+    </a>    
+</p>
 
 ---
 

@@ -4,7 +4,7 @@ Official implementation of "XVerse: Consistent Multi-Subject Control of Identity
 
 ---
 
-## 🚀 Updates
+## 🔥 News
 - **2025.6.26**: The code has been released!
 
 ---
@@ -85,6 +85,19 @@ bash ./eval/eval_scripts/run_eval.sh
 The script will automatically evaluate the model on the XVerseBench dataset and save the results in the `./results` folder.
 
 <!-- ### Online HuggingFace Demo -->
+---
+
+## 📌 ToDo
+
+- [x] Release github repo.
+- [x] Release arXiv paper.
+- [x] Release model checkpoints.
+- [x] Release inference data: XVerseBench.
+- [x] Release inference code for XVerseBench.
+- [x] Release inference code for gradio demo.
+- [ ] Release inference code for single sample.
+- [ ] Release huggingface space demo.
+- [ ] Release Benchmark Leaderboard.
 
 ---
 

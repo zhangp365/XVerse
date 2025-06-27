@@ -135,11 +135,10 @@ vlm_btns = []
 accordions = []
 idip_checkboxes = []
 accordion_states = []
-indexs = [0, 1]
 
 def open_accordion_on_example_selection(*args):
     print("enter open_accordion_on_example_selection")
-    images = list(args[5:5+num_inputs])
+    images = list(args[-18:-12])
     outputs = []
     for i, img in enumerate(images):
         if img is not None:
@@ -160,11 +159,9 @@ def generate_image(
     single_attention,  # 新增参数
     ip_scale,
     latent_sblora_scale_str, vae_lora_scale,
+    indexs,  # 新增参数
     *images_captions_faces,  # Combine all unpacked arguments into one tuple
 ):
-    global indexs
-    # current_index = indexs.value
-
     torch.cuda.empty_cache()
     num_images = 4
 
@@ -303,22 +300,26 @@ def generate_image(
 
     return image
 
-def create_image_input(index, open=True):
+def create_image_input(index, open=True, indexs_state=None):
     accordion_state = gr.State(open)
     with gr.Column():
         with gr.Accordion(f"Input Image {index + 1}", open=accordion_state.value) as accordion:
             image = gr.Image(type="filepath", label=f"Image {index + 1}")
             caption = gr.Textbox(label=f"Caption {index + 1}", value="")
-            id_ip_checkbox = gr.Checkbox(value=False, label="ID or not", visible=True)
+            id_ip_checkbox = gr.Checkbox(value=False, label=f"ID or not {index + 1}", visible=True)
             with gr.Row():
                 vlm_btn = gr.Button("Auto Caption")
                 det_btn = gr.Button("Det & Seg")
                 face_btn = gr.Button("Crop Face")
             accordion.expand(
-                    lambda x: update_inputs(True, index), 
+                    inputs=[indexs_state],
+                    fn = lambda x: update_inputs(True, index, x), 
+                    outputs=[indexs_state, accordion_state],
                 )
             accordion.collapse(
-                    lambda x: update_inputs(False, index), 
+                    inputs=[indexs_state],
+                    fn = lambda x: update_inputs(False, index, x), 
+                    outputs=[indexs_state, accordion_state],
                 )
     return image, caption, face_btn, det_btn, vlm_btn, accordion_state, accordion, id_ip_checkbox
 
@@ -341,8 +342,9 @@ def merge_instances(orig_img, indices, ins_bboxes, ins_images):
     return img, bbox
 
 
-def change_accordion(at: bool, index: int):
-    global indexs
+def change_accordion(at: bool, index: int, state: list):
+    print(at, state)
+    indexs = state
     if at:
         if index not in indexs:
             indexs.append(index)
@@ -353,11 +355,10 @@ def change_accordion(at: bool, index: int):
     # 确保 indexs 是有序的
     indexs.sort()
     print(indexs)
-    return gr.Accordion(open=at)
+    return gr.Accordion(open=at), indexs
 
-def update_inputs(is_open, index):
-    global indexs
-    print(indexs, is_open, index)
+def update_inputs(is_open, index, state: list):
+    indexs = state
     if is_open:
         if index not in indexs:
             indexs.append(index)
@@ -368,9 +369,11 @@ def update_inputs(is_open, index):
     # 确保 indexs 是有序的
     indexs.sort()
     print(indexs)
-    # return current_indexs
+    return indexs, is_open
 
 with gr.Blocks() as demo:
+
+    indexs_state = gr.State([0, 1])  # 添加状态来存储 indexs
     
     gr.Markdown("### XVerse Demo")
     with gr.Row():
@@ -462,7 +465,7 @@ with gr.Blocks() as demo:
             clear_btn = gr.Button("清空输入图像")
             with gr.Row():
                 for i in range(num_inputs):
-                    image, caption, face_btn, det_btn, vlm_btn, accordion_state, accordion, id_ip_checkbox = create_image_input(i, open=i<2)
+                    image, caption, face_btn, det_btn, vlm_btn, accordion_state, accordion, id_ip_checkbox = create_image_input(i, open=i<2, indexs_state=indexs_state)
                     images.append(image)
                     idip_checkboxes.append(id_ip_checkbox)
                     captions.append(caption)
@@ -485,6 +488,7 @@ with gr.Blocks() as demo:
             vae_skip_iter, weight_id_ip_str,
             double_attention, single_attention,
             db_latent_lora_scale_str, sb_latent_lora_scale_str, vae_lora_scale_str,
+            indexs_state,  # 传递 indexs 状态
             *images,  
             *captions, 
             *idip_checkboxes,
@@ -500,7 +504,70 @@ with gr.Blocks() as demo:
         face_btns[i].click(crop_face_img, inputs=[images[i]], outputs=[images[i]])
         det_btns[i].click(det_seg_img, inputs=[images[i], captions[i]], outputs=[images[i]])
         vlm_btns[i].click(vlm_img_caption, inputs=[images[i]], outputs=[captions[i]])
-        accordion_states[i].change(fn=lambda x, index=i: change_accordion(x, index), inputs=accordion_states[i], outputs=accordions[i])
+        accordion_states[i].change(fn=lambda x, state, index=i: change_accordion(x, index, state), inputs=[accordion_states[i], indexs_state], outputs=[accordions[i], indexs_state])
+    
+    examples = gr.Examples(
+        examples=[
+            [
+                "ENT1 wearing a tiny hat", 
+                42, 256, 768, 768,
+                3, 5,
+                0.85, 1.3,
+                0.05, 0.8,
+                "sample/hamster.jpg", None, None, None, None, None,
+                "a hamster", None, None, None, None, None,
+                False, False, False, False, False, False
+            ],
+            [
+                "ENT1 in a red dress is smiling", 
+                42, 256, 768, 768,
+                3, 5,
+                0.85, 1.3,
+                0.05, 0.8,
+                "sample/woman.jpg", None, None, None, None, None,
+                "a woman", None, None, None, None, None,
+                True, False, False, False, False, False
+            ],
+            [
+                "ENT1 and ENT2 standing together in a park.", 
+                42, 256, 768, 768,
+                2, 5,
+                0.85, 1.3,
+                0.05, 0.8,
+                "sample/woman.jpg", "sample/girl.jpg", None, None, None, None,
+                "a woman", "a girl", None, None, None, None,
+                True, True, False, False, False, False
+            ],
+            [
+                "ENT1, ENT2, and ENT3 standing together in a park.", 
+                42, 256, 768, 768,
+                2.5, 5,
+                0.8, 1.2,
+                0.05, 0.8,
+                "sample/woman.jpg", "sample/girl.jpg", "sample/old_man.jpg", None, None, None,
+                "a woman", "a girl", "an old man", None, None, None,
+                True, True, True, False, False, False
+            ],
+        ],
+        inputs=[
+            prompt, seed, 
+            cond_size,
+            target_height,
+            target_width,
+            weight_id,
+            weight_ip,
+            ip_scale_str,
+            vae_lora_scale,
+            vae_skip_iter_s1,
+            vae_skip_iter_s2,
+            *images,
+            *captions, 
+            *idip_checkboxes
+        ],
+        outputs=accordion_states,
+        fn=open_accordion_on_example_selection,
+        run_on_click=True
+    )
 
 port = int(os.environ.get("ARNOLD_WORKER_0_PORT", "-1").split(",")[3])
 demo.queue().launch(share=True, inbrowser=True, server_name="0.0.0.0", server_port=port)

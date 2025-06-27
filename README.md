@@ -9,10 +9,10 @@ Official implementation of "XVerse: Consistent Multi-Subject Control of Identity
     <a href="https://bytedance.github.io/XVerse/">
         <img alt="Project Page" src="https://img.shields.io/badge/Project-Page-blue">
     </a>
-    <a href="[https://huggingface.co/Shitao/OmniGen-v1](https://github.com/bytedance/XVerse/tree/main/assets)">
+    <a href="https://github.com/bytedance/XVerse/tree/main/assets">
         <img alt="Build" src="https://img.shields.io/badge/XVerseBench-Dataset-green">
-    </a>    
-    <a href="[https://huggingface.co/Shitao/OmniGen-v1](https://huggingface.co/ByteDance/XVerse)">
+    </a>
+    <a href="https://huggingface.co/ByteDance/XVerse">
         <img alt="Build" src="https://img.shields.io/badge/🤗-HF%20Model-yellow">
     </a>    
 </p>

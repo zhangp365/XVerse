@@ -103,6 +103,7 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 - [ ] Release inference code for single sample.
 - [ ] Release huggingface space demo.
 - [ ] Release Benchmark Leaderboard.
+- [ ] Support inference in consumer-grade GPUs.
 
 ## License
     

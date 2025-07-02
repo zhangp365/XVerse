@@ -37,8 +37,14 @@ First, install the necessary dependencies:
 conda create -n XVerse python=3.10.16 -y
 # Activate the XVerse environment
 conda activate XVerse
+# Install the correct version of pytorch (According to your machine)
+pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 # Use pip to install the dependencies specified in requirements.txt
 pip install -r requirements.txt
+# Install flash-attn
+pip install flash-attn==2.7.4.post1 --no-build-isolation
+# Update version of httpx
+pip install httpx==0.23.3
 ```
 
 Next, download the required checkpoints:

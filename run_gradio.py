@@ -157,7 +157,7 @@ def generate_image(
     vae_skip_iter, control_weight_lambda,
     double_attention,  # 新增参数
     single_attention,  # 新增参数
-    ip_scale,
+    latent_dblora_scale_str,
     latent_sblora_scale_str, vae_lora_scale,
     indexs,  # 新增参数
     *images_captions_faces,  # Combine all unpacked arguments into one tuple
@@ -243,7 +243,7 @@ def generate_image(
         seed=seed,
         cond_size=cond_size,
         vae_skip_iter=vae_skip_iter,
-        lora_scale=ip_scale,
+        lora_scale=latent_dblora_scale_str,
         control_weight_lambda=control_weight_lambda,
         latent_sblora_scale=latent_sblora_scale_str,
         condition_sblora_scale=vae_lora_scale,
@@ -284,7 +284,7 @@ def generate_image(
         control_weight_lambda=control_weight_lambda,  # 传递新的参数
         double_attention=double_attention,  # 新增参数
         single_attention=single_attention,  # 新增参数
-        ip_scale=ip_scale,
+        ip_scale=latent_dblora_scale_str,
         use_latent_sblora_control=use_latent_sblora_control,
         latent_sblora_scale=latent_sblora_scale_str,
         use_condition_sblora_control=use_condition_sblora_control,

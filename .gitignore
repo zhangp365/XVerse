@@ -1,3 +1,5 @@
 assets/XVerseBench/animal/*
 assets/XVerseBench/object/*
 __pycache__
+checkpoints/*
+generated_*

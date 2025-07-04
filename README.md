@@ -55,11 +55,22 @@ cd ..
 ```
 **Important**: You'll also need to download the face recognition model `model_ir_se50.pth` from [InsightFace_Pytorch](https://github.com/TreB1eN/InsightFace_Pytorch) and place it directly into the `./checkpoints/` folder.
 
+After that, you can export the model paths as environment variables. This step ensures that the subsequent inference scripts can locate the necessary models correctly:
+``` bash
+export FLORENCE2_MODEL_PATH="./checkpoints/Florence-2-large"
+export SAM2_MODEL_PATH="./checkpoints/sam2.1_hiera_large.pt"
+export FACE_ID_MODEL_PATH="./checkpoints/model_ir_se50.pth"
+export CLIP_MODEL_PATH="./checkpoints/clip-vit-large-patch14"
+export FLUX_MODEL_PATH="./checkpoints/FLUX.1-dev"
+export DPG_VQA_MODEL_PATH="./checkpoints/mplug_visual-question-answering_coco_large_en"
+export DINO_MODEL_PATH="./checkpoints/dino-vits16"
+```
+
 ### Local Gradio Demo
 
 To run the interactive Gradio demo locally, execute the following command:
 ```bash
-bash run_demo.sh
+python run_demo.py
 ```
 
 #### Input Settings Explained
@@ -88,6 +99,18 @@ The demo provides detailed control over your input images:
 >     * You can then write your main prompt simply as: "`ENT1` walking beside `ENT2` in a park." The code will **automatically replace** these placeholders with the full description text before generation.
 > * **Active Images**: Only images in **expanded** (un-collapsed) panels will be fed into the model. Collapsed image panels are ignored.
 
+### Inference with Single Sample
+
+To perform inference on a single sample, run the following command. You can customize the image generation by adjusting the parameters such as the prompt, seed, and output size:
+```bash
+python inference_single_sample.py --prompt "ENT1 wearing a tiny hat" --seed 42 --cond_size 256 --target_height 768 --target_width 768 --weight_id 3 --weight_ip 5 --latent_lora_scale 0.85 --vae_lora_scale 1.3 --vae_skip_iter_s1 0.05 --vae_skip_iter_s2 0.8 --images "sample/hamster.jpg" --captions "a hamster" --idips false --save_path "generated_image_1.png" --num_images 1
+```
+
+For inference with multiple condition images, use the command below. This allows you to incorporate multiple reference images into the generation process. Make sure to match the number of --images, --captions, and --ids values:
+```bash
+python inference_single_sample.py --prompt "ENT1, and ENT2 standing together in a park." --seed 42 --cond_size 256 --target_height 768 --target_width 768 --weight_id 2 --weight_ip 5 --latent_lora_scale 0.85 --vae_lora_scale 1.3 --vae_skip_iter_s1 0.05 --vae_skip_iter_s2 0.8 --images "sample/woman.jpg" "sample/girl.jpg" --captions "a woman" "a girl" --idips true true --save_path "generated_image_2.png" --num_images 1
+```
+
 ## Inference with XVerseBench
 
 ![XVerseBench](sample/XVerseBench.png)
@@ -106,7 +129,7 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 - [x] Release inference data: XVerseBench.
 - [x] Release inference code for XVerseBench.
 - [x] Release inference code for gradio demo.
-- [ ] Release inference code for single sample.
+- [x] Release inference code for single sample.
 - [ ] Release huggingface space demo.
 - [ ] Release Benchmark Leaderboard.
 - [ ] Support inference in consumer-grade GPUs.
@@ -125,5 +148,6 @@ If you find this project useful for your research, please consider citing our pa
   author={Chen, Bowen and Zhao, Mengyi and Sun, Haomiao and Chen, Li and Wang, Xu and Du, Kang and Wu, Xinglong},
   journal={arXiv preprint arXiv:2506.21416},
   year={2025}
+
+
 }
-```

@@ -514,6 +514,9 @@ class CustomFluxPipeline:
         print("[CustomFluxPipeline] Loading FLUX Pipeline")
         self.pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype).to(device)
 
+        # self.pipe.vae = self.pipe.vae.to(device, dtype=torch_dtype)
+        # self.pipe.transformer = self.pipe.transformer.to(device, dtype=torch_dtype)
+
         self.config = config
         self.device = device
         self.dtype = torch_dtype

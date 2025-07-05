@@ -139,7 +139,7 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 The code in this project is licensed under Apache 2.0; the dataset is licensed under CC0, subject to the intellctual property owned by Bytedance. Meanwhile, the dataset is adapted from [dreambench++](https://dreambenchplus.github.io/), you should also comply with the license of dreambench++.
 
 ## Acknowledgments
-We sincerely thank Alex Nasa for deploying the Hugging Face demo with the FLUX.1-schnell model. You can experience the online demo by clicking [here](https://huggingface.co/spaces/alexnasa/XVerse).
+We sincerely thank Alex Nasa for deploying the Hugging Face demo with the FLUX.1-schnell model. You can experience this online demo by clicking [here](https://huggingface.co/spaces/alexnasa/XVerse).
     
 ##  Citation
 If XVerse is helpful, please help to ⭐ the repo.

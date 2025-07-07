@@ -473,11 +473,25 @@ def quantization(pipe, qtype):
                 "context_embedder",
             ]
             try:
-                quantize(pipe.transformer, weights=quant_level, **extra_quanto_args)
-                quantize(pipe.text_encoder_2, weights=quant_level, **extra_quanto_args)
                 print("[Quantization] Start freezing")
+                transformer_device = pipe.transformer.device
+                if torch.cuda.is_available() and transformer_device != "cuda":
+                    pipe.transformer = pipe.transformer.to("cuda")
+                    pipe_ori_transformer = pipe.transformer
+                quantize(pipe.transformer, weights=quant_level, **extra_quanto_args)
                 freeze(pipe.transformer)
+                if torch.cuda.is_available() and transformer_device != "cuda":
+                    pipe.transformer = pipe.transformer.to(transformer_device)
+
+                text_encoder_2_device = pipe.text_encoder_2.device
+                if torch.cuda.is_available() and text_encoder_2_device != "cuda":
+                    pipe.text_encoder_2 = pipe.text_encoder_2.to("cuda")
+                    pipe_ori_text_encoder_2 = pipe.text_encoder_2
+                quantize(pipe.text_encoder_2, weights=quant_level, **extra_quanto_args)
                 freeze(pipe.text_encoder_2)
+                if torch.cuda.is_available() and text_encoder_2_device != "cuda":
+                    pipe.text_encoder_2 = pipe.text_encoder_2.to(text_encoder_2_device)
+                torch.cuda.empty_cache()
                 print("[Quantization] Finished")
             except Exception as e:
                 if "out of memory" in str(e).lower():
@@ -500,7 +514,7 @@ def quantization(pipe, qtype):
             convert_to_float8_training(
                 pipe.transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
             )
-
+import time
 class CustomFluxPipeline:
     def __init__(
         self,
@@ -520,8 +534,10 @@ class CustomFluxPipeline:
         self.config = config
         self.device = device
         self.dtype = torch_dtype
+        start = time.time()
         if config["model"].get("dit_quant", "None") != "None":
             quantization(self.pipe, config["model"]["dit_quant"])
+        print(f"Quantization time: {time.time() - start}")
 
         self.modulation_adapters = []
         self.pipe.modulation_adapters = []

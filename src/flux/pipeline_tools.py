@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 import os
@@ -514,42 +515,71 @@ def quantization(pipe, qtype):
             convert_to_float8_training(
                 pipe.transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
             )
-import time
-import torch
-
 class ForwardHookManager:
     def __init__(self):
         self.registered_models = []
-        self.origin_states = {}  # 用字典保存原始状态
+        self.origin_states = {}
+        self.load_order = []
+
+    def _get_available_memory(self):
+        total = torch.cuda.get_device_properties(0).total_memory
+        reserved = torch.cuda.memory_reserved(0)
+        return total - reserved
+
+    def _free_up_memory(self, required_mem):
+        for model in reversed(self.load_order):
+            if self.origin_states[model]['in_cuda']:
+                model.to(self.origin_states[model]['origin_device'])
+                self.origin_states[model]['in_cuda'] = False
+                self.load_order.remove(model)
+                
+                if self._get_available_memory() * 0.8 >= required_mem:
+                    torch.cuda.empty_cache()
+                    return True
+        return False
 
     def _register(self, model):
         if model not in self.registered_models:
-            # 保存原始状态
-            self.origin_states[model] = {
-                'origin_forward': model.forward,
-                'origin_device': model.device if hasattr(model, 'device') else torch.device('cpu')
-            }
-            
-            # 创建新的前向传播方法
-            def custom_forward(*args, **kwargs):
-                origin_device = self.origin_states[model]['origin_device']
-                if torch.cuda.is_available() and origin_device.type != 'cuda':
-                    model.to('cuda')
-                    # 转换输入参数
-                    args = tuple(arg.cuda() if isinstance(arg, torch.Tensor) else arg 
-                               for arg in args)
-                    kwargs = {k: v.cuda() if isinstance(v, torch.Tensor) else v 
-                            for k, v in kwargs.items()}
-                start = time.time()
-                result = self.origin_states[model]['origin_forward'](*args, **kwargs)
-                # if torch.cuda.is_available() and origin_device.type != 'cuda':
-                #     model.to(origin_device)
+            origin_device = model.device if hasattr(model, 'device') else torch.device('cpu')
+            if torch.cuda.is_available() and origin_device.type != 'cuda':
+                with torch.no_grad():
+                    ori_cuda_memory = torch.cuda.memory_allocated()
+                    model.to("cuda")
+                    cuda_memory = torch.cuda.memory_allocated() - ori_cuda_memory
+                    model.to(origin_device)
+                    torch.cuda.empty_cache()
 
-                print(f"[ForwardHook] Model: {model.__class__.__name__}, Time: {time.time() - start}")
-                return result
-            
-            model.forward = custom_forward
-            self.registered_models.append(model)
+                self.origin_states[model] = {
+                    'origin_forward': model.forward,
+                    'origin_device': origin_device,
+                    'cuda_memory': cuda_memory,
+                    'in_cuda': False,
+                }
+
+                def custom_forward(*args, **kwargs):
+                    origin_device = model.device if hasattr(model, 'device') else self.origin_states[model]['origin_device']
+                    if torch.cuda.is_available() and origin_device.type != 'cuda':
+                        available_mem = self._get_available_memory()
+                        required_mem = self.origin_states[model]['cuda_memory']
+                        if available_mem * 0.8 < required_mem:
+                            if not self._free_up_memory(required_mem):
+                                raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+
+                        model.to('cuda')
+                        self.load_order.append(model)
+                        self.origin_states[model]['in_cuda'] = True
+                        args = tuple(arg.cuda() if isinstance(arg, torch.Tensor) and arg.device != 'cuda' else arg     
+                                   for arg in args)
+                        kwargs = {k: v.cuda() if isinstance(v, torch.Tensor) and v.device != 'cuda' else v 
+                                for k, v in kwargs.items()}
+
+                    start = time.time()
+                    result = self.origin_states[model]['origin_forward'](*args, **kwargs)
+                    print(f"[ForwardHook] Model: {model.__class__.__name__}, Time: {time.time() - start}")
+                    return result
+
+                model.forward = custom_forward
+                self.registered_models.append(model)
         return model
 
     def register(self, model):
@@ -560,10 +590,7 @@ class ForwardHookManager:
             model = self._register(model)
         return model
 
-            
-
     def revert(self):
-        """恢复所有模型的原始状态"""
         for model in self.registered_models:
             if model in self.origin_states:
                 model.forward = self.origin_states[model]['origin_forward']

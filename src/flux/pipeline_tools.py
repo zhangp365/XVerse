@@ -39,7 +39,7 @@ import safetensors
 from src.adapters.mod_adapters import CLIPModAdapter
 from peft import LoraConfig, set_peft_model_state_dict
 from transformers import CLIPProcessor, CLIPModel, CLIPVisionModelWithProjection, CLIPVisionModel
-
+from diffusers import AutoencoderKL
 
 def encode_vae_images(pipeline: FluxPipeline, images: Tensor):
     images = pipeline.image_processor.preprocess(images)
@@ -515,6 +515,63 @@ def quantization(pipe, qtype):
                 pipe.transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
             )
 import time
+import torch
+
+class ForwardHookManager:
+    def __init__(self):
+        self.registered_models = []
+        self.origin_states = {}  # 用字典保存原始状态
+
+    def _register(self, model):
+        if model not in self.registered_models:
+            # 保存原始状态
+            self.origin_states[model] = {
+                'origin_forward': model.forward,
+                'origin_device': model.device if hasattr(model, 'device') else torch.device('cpu')
+            }
+            
+            # 创建新的前向传播方法
+            def custom_forward(*args, **kwargs):
+                origin_device = self.origin_states[model]['origin_device']
+                if torch.cuda.is_available() and origin_device.type != 'cuda':
+                    model.to('cuda')
+                    # 转换输入参数
+                    args = tuple(arg.cuda() if isinstance(arg, torch.Tensor) else arg 
+                               for arg in args)
+                    kwargs = {k: v.cuda() if isinstance(v, torch.Tensor) else v 
+                            for k, v in kwargs.items()}
+                start = time.time()
+                result = self.origin_states[model]['origin_forward'](*args, **kwargs)
+                # if torch.cuda.is_available() and origin_device.type != 'cuda':
+                #     model.to(origin_device)
+
+                print(f"[ForwardHook] Model: {model.__class__.__name__}, Time: {time.time() - start}")
+                return result
+            
+            model.forward = custom_forward
+            self.registered_models.append(model)
+        return model
+
+    def register(self, model):
+        if isinstance(model, torch.nn.Module):
+            if isinstance(model, AutoencoderKL):
+                model.encoder = self._register(model.encoder)
+                model.decoder = self._register(model.decoder)
+            model = self._register(model)
+        return model
+
+            
+
+    def revert(self):
+        """恢复所有模型的原始状态"""
+        for model in self.registered_models:
+            if model in self.origin_states:
+                model.forward = self.origin_states[model]['origin_forward']
+                model.to(self.origin_states[model]['origin_device'])
+        self.registered_models.clear()
+        self.origin_states.clear()
+
+
 class CustomFluxPipeline:
     def __init__(
         self,
@@ -552,6 +609,14 @@ class CustomFluxPipeline:
             if ckpt_root_condition is None and (config["model"]["use_condition_dblock_lora"] or config["model"]["use_condition_sblock_lora"]):
                 ckpt_root_condition = ckpt_root
             load_dit_lora(self, self.pipe, config, torch_dtype, device, f"{ckpt_root}", f"{ckpt_root_condition}", is_training=False)
+        # self.pipe=self.pipe.to("cuda")
+        self.forward_hook_manager = ForwardHookManager()
+        self.pipe.transformer = self.forward_hook_manager.register(self.pipe.transformer)
+        self.pipe.text_encoder = self.forward_hook_manager.register(self.pipe.text_encoder)
+        self.pipe.vae = self.forward_hook_manager.register(self.pipe.vae)
+        self.pipe.text_encoder_2 = self.forward_hook_manager.register(self.pipe.text_encoder_2)
+        self.pipe.clip_model = self.forward_hook_manager.register(self.pipe.clip_model)
+        # self.pipe.clip_processor = forward_hook(self.pipe.clip_processor)
 
     def add_modulation_adapter(self, modulation_adapter):
         self.modulation_adapters.append(modulation_adapter)
@@ -690,6 +755,7 @@ def load_modulation_adapter(self, config, torch_dtype, device, ckpt_dir=None, is
         modulation_adapter.requires_grad_(False)
 
     modulation_adapter.to(device, dtype=torch_dtype)
+    self.forward_hook_manager.register(modulation_adapter)
     return modulation_adapter
 
 

@@ -126,6 +126,7 @@ def generate(
     use_condition_sblora_control: bool = False,
     condition_sblora_scale: str = None,
     idips = None,
+    device = torch.device('cuda'),
     **params: dict,
 ):
     model_config = model_config or get_config(config_path).get("model", {})
@@ -225,7 +226,7 @@ def generate(
     else:
         batch_size = prompt_embeds.shape[0]
 
-    device = self._execution_device
+    # device = self._execution_device
 
     lora_scale = (
         self.joint_attention_kwargs.get("scale", None)
@@ -425,6 +426,11 @@ def generate(
                 if vae_skip_iter_t:
                     print(f"timestep:{t}, skip vae:{vae_skip_iter_t}")               
 
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print(f"cgr before self.transformer torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
+            print(f"cgr before self.transformer torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
+            self.transformer = self.transformer.to(device)
             noise_pred = tranformer_forward(
                 self.transformer,
                 model_config=model_config,
@@ -528,6 +534,7 @@ def generate_from_test_sample(
     use_condition_sblora_control: bool = False,
     condition_sblora_scale: str = None,
     use_idip = False,
+    device = torch.device('cuda'),
     **kargs
 ):
     target_size = config["train"]["dataset"]["val_target_size"]
@@ -536,7 +543,7 @@ def generate_from_test_sample(
     pos_offset_type = config["model"].get("pos_offset_type", "width")
     seed = config["model"].get("seed", seed)
 
-    device = pipe._execution_device
+    # device = pipe._execution_device
 
     condition_imgs = test_sample['input_images']
     position_delta = test_sample['position_delta']
@@ -827,6 +834,7 @@ def generate_from_test_sample(
             use_condition_sblora_control=use_condition_sblora_control,
             condition_sblora_scale=condition_sblora_scale,
             idips=idips if use_idip else None,
+            device=device,
             **kargs,
         ).images[0]
 

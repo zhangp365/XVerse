@@ -32,9 +32,12 @@ import yaml
 import numpy as np
 
 import argparse
+import time
 
 dtype = torch.bfloat16
-device = "cuda"
+init_device = torch.device("cpu")
+do_device = torch.device("cuda")
+# init_device = torch.device("cuda")
 
 config_path = "train/config/XVerse_config_demo.yaml"
 
@@ -42,12 +45,15 @@ config = config_train = get_train_config(config_path)
 config["model"]["dit_quant"] = "int8-quanto"
 config["model"]["use_dit_lora"] = False
 model = CustomFluxPipeline(
-    config, device, torch_dtype=dtype,
+    config, init_device, torch_dtype=dtype,
 )
 model.pipe.set_progress_bar_config(leave=False)
 
-# face_model = FaceID(device)
-# detector = ObjectDetector(device)
+torch.cuda.synchronize()
+print(f"cgr CustomFluxPipeline torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
+print(f"cgr CustomFluxPipeline torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
+# face_model = FaceID(init_device)
+# detector = ObjectDetector(init_device)
 
 config = get_train_config(config_path)
 model.config = config
@@ -63,12 +69,18 @@ model.clear_modulation_adapters()
 model.pipe.unload_lora_weights()
 if not os.path.exists(ckpt_root):
     print("Checkpoint root does not exist.")
-
-modulation_adapter = load_modulation_adapter(model, config, dtype, device, f"{ckpt_root}/modulation_adapter", is_training=False)
+start_t = time.time()
+modulation_adapter = load_modulation_adapter(model, config, dtype, init_device, f"{ckpt_root}/modulation_adapter", is_training=False)
 model.add_modulation_adapter(modulation_adapter)
+print(f"Load modulation adapter time: {time.time() - start_t}")
+start_t = time.time()
 if config["model"]["use_dit_lora"]:
-    load_dit_lora(model, model.pipe, config, dtype, device, f"{ckpt_root}", is_training=False)
+    load_dit_lora(model, model.pipe, config, dtype, init_device, f"{ckpt_root}", is_training=False)
+print(f"Load DIT lora time: {time.time() - start_t}")
 
+torch.cuda.synchronize()
+print(f"cgr CustomFluxPipeline torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
+print(f"cgr CustomFluxPipeline torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
 
 def generate_image(prompt, cond_size, target_height, target_width, seed, vae_skip_iter, control_weight_lambda,      latent_dblora_scale_str, latent_sblora_scale_str, vae_lora_scale_str,
                    indexs, num_images, *args):  # 新增 num_images 参数
@@ -185,6 +197,7 @@ def generate_image(prompt, cond_size, target_height, target_width, seed, vae_ski
         latent_sblora_scale=latent_sblora_scale_str,
         use_condition_sblora_control=use_condition_sblora_control,
         condition_sblora_scale=vae_lora_scale_str,
+        device=do_device,
     )
     if isinstance(image, list):
         num_cols = 2

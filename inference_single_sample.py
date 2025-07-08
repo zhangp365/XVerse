@@ -249,6 +249,8 @@ def main():
     else:
         forward_hook_manager = None
         model.pipe=model.pipe.to("cuda")
+        for i in range(len(model.pipe.modulation_adapters)):
+            model.pipe.modulation_adapters[i] = model.pipe.modulation_adapters[i].to("cuda")
     image = generate_image(
         model,
         args.prompt,

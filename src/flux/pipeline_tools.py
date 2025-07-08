@@ -475,23 +475,10 @@ def quantization(pipe, qtype):
             ]
             try:
                 print("[Quantization] Start freezing")
-                transformer_device = pipe.transformer.device
-                if torch.cuda.is_available() and transformer_device != "cuda":
-                    pipe.transformer = pipe.transformer.to("cuda")
-                    pipe_ori_transformer = pipe.transformer
                 quantize(pipe.transformer, weights=quant_level, **extra_quanto_args)
                 freeze(pipe.transformer)
-                if torch.cuda.is_available() and transformer_device != "cuda":
-                    pipe.transformer = pipe.transformer.to(transformer_device)
-
-                text_encoder_2_device = pipe.text_encoder_2.device
-                if torch.cuda.is_available() and text_encoder_2_device != "cuda":
-                    pipe.text_encoder_2 = pipe.text_encoder_2.to("cuda")
-                    pipe_ori_text_encoder_2 = pipe.text_encoder_2
                 quantize(pipe.text_encoder_2, weights=quant_level, **extra_quanto_args)
                 freeze(pipe.text_encoder_2)
-                if torch.cuda.is_available() and text_encoder_2_device != "cuda":
-                    pipe.text_encoder_2 = pipe.text_encoder_2.to(text_encoder_2_device)
                 torch.cuda.empty_cache()
                 print("[Quantization] Finished")
             except Exception as e:
@@ -527,7 +514,7 @@ class CustomFluxPipeline:
     ):
         model_path = os.getenv("FLUX_MODEL_PATH", "black-forest-labs/FLUX.1-dev")
         print("[CustomFluxPipeline] Loading FLUX Pipeline")
-        self.pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype).to(device)
+        self.pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype)#.to(device)
 
         # self.pipe.vae = self.pipe.vae.to(device, dtype=torch_dtype)
         # self.pipe.transformer = self.pipe.transformer.to(device, dtype=torch_dtype)
@@ -539,6 +526,8 @@ class CustomFluxPipeline:
         if config["model"].get("dit_quant", "None") != "None":
             quantization(self.pipe, config["model"]["dit_quant"])
         print(f"Quantization time: {time.time() - start}")
+
+        self.pipe = self.pipe.to(device)
 
         self.modulation_adapters = []
         self.pipe.modulation_adapters = []

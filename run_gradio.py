@@ -21,6 +21,7 @@ import torch
 import gradio as gr
 import string
 import random, time, os, math   
+from src.utils.gpu_momory_utils import ForwardHookManager
 
 from src.flux.generate import generate_from_test_sample, seed_everything
 from src.flux.pipeline_tools import CustomFluxPipeline, load_modulation_adapter, load_dit_lora
@@ -28,11 +29,27 @@ from src.utils.data_utils import get_train_config, image_grid, pil2tensor, json_
 from eval.tools.face_id import FaceID
 from eval.tools.florence_sam import ObjectDetector
 import shutil
-import yaml
+import yaml, gc
 import numpy as np
 
+import argparse  # 导入 argparse 模块
+
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='Run Gradio demo with configurable parameters')
+parser.add_argument('--use_low_vram', type=bool, default=False, help='Use low vram')
+parser.add_argument('--server_name', type=str, default='0.0.0.0', help='Server name to bind to')
+parser.add_argument('--server_port', type=int, default=7680, help='Server port to listen on')
+args = parser.parse_args()
+
+use_low_vram = args.use_low_vram
+
 dtype = torch.bfloat16
-device = "cuda"
+
+if use_low_vram:
+    init_device = torch.device("cpu")
+else:
+    init_device = torch.device("cuda")
+do_device = torch.device("cuda")
 
 config_path = "train/config/XVerse_config_demo.yaml"
 
@@ -40,12 +57,12 @@ config = config_train = get_train_config(config_path)
 config["model"]["dit_quant"] = "int8-quanto"
 config["model"]["use_dit_lora"] = False
 model = CustomFluxPipeline(
-    config, device, torch_dtype=dtype,
+    config, init_device, torch_dtype=dtype,
 )
 model.pipe.set_progress_bar_config(leave=False)
 
-face_model = FaceID(device)
-detector = ObjectDetector(device)
+face_model = FaceID(init_device)
+detector = ObjectDetector(init_device)
 
 config = get_train_config(config_path)
 model.config = config
@@ -62,10 +79,31 @@ model.pipe.unload_lora_weights()
 if not os.path.exists(ckpt_root):
     print("Checkpoint root does not exist.")
 
-modulation_adapter = load_modulation_adapter(model, config, dtype, device, f"{ckpt_root}/modulation_adapter", is_training=False)
+modulation_adapter = load_modulation_adapter(model, config, dtype, init_device, f"{ckpt_root}/modulation_adapter", is_training=False)
 model.add_modulation_adapter(modulation_adapter)
 if config["model"]["use_dit_lora"]:
-    load_dit_lora(model, model.pipe, config, dtype, device, f"{ckpt_root}", is_training=False)
+    load_dit_lora(model, model.pipe, config, dtype, init_device, f"{ckpt_root}", is_training=False)
+
+if init_device.type == 'cpu' and use_low_vram == True:
+    forward_hook_manager = ForwardHookManager()
+    model.pipe.transformer = forward_hook_manager.register(model.pipe.transformer)
+    model.pipe.text_encoder = forward_hook_manager.register(model.pipe.text_encoder)
+    model.pipe.vae = forward_hook_manager.register(model.pipe.vae)
+    model.pipe.text_encoder_2 = forward_hook_manager.register(model.pipe.text_encoder_2)
+    model.pipe.clip_model = forward_hook_manager.register(model.pipe.clip_model)
+    for i in range(len(model.pipe.modulation_adapters)):
+        model.pipe.modulation_adapters[i] = forward_hook_manager.register(model.pipe.modulation_adapters[i])
+    forward_hook_manager.register(face_model.detector)
+    forward_hook_manager.register(face_model.model)
+    forward_hook_manager.register(detector.detector.florence2_model)
+    forward_hook_manager.register(detector.detector.sam2_predictor.model)
+else:
+    forward_hook_manager = None
+    model.pipe=model.pipe.to("cuda")
+    face_model.detector.to("cuda")
+    face_model.model.to("cuda")
+    detector.detector.florence2_model.to("cuda")
+    detector.detector.sam2_predictor.model.to("cuda")
 
 vae_skip_iter = None
 attn_skip_iter = 0
@@ -75,6 +113,10 @@ def clear_images():
     return [None, ]*num_inputs
 
 def det_seg_img(image, label):
+    # if forward_hook_manager is not None:
+    #     detector.detector.florence2_model = forward_hook_manager.model_to_cuda(detector.detector.florence2_model)
+    #     detector.detector.sam2_predictor = forward_hook_manager.model_to_cuda(detector.detector.sam2_predictor)
+
     if isinstance(image, str):
         image = Image.open(image).convert("RGB")
     instance_result_dict = detector.get_multiple_instances(image, label, min_size=image.size[0]//20)
@@ -83,6 +125,10 @@ def det_seg_img(image, label):
     return ins
 
 def crop_face_img(image):
+
+    # if forward_hook_manager is not None:
+    #     face_model.detector = forward_hook_manager.model_to_cuda(face_model.detector)
+
     if isinstance(image, str):
         image = Image.open(image).convert("RGB")
 
@@ -90,12 +136,16 @@ def crop_face_img(image):
     image = pad_to_square(image).resize((2048, 2048))
     
     face_bbox = face_model.detect(
-        (pil2tensor(image).unsqueeze(0) * 255).to(torch.uint8).to(device), 1.4
+        (pil2tensor(image).unsqueeze(0) * 255).to(torch.uint8).to(do_device), 1.4
     )[0]
     face = image.crop(face_bbox)
     return face
 
 def vlm_img_caption(image):
+
+    # if forward_hook_manager is not None:
+    #     detector.detector.florence2_model = forward_hook_manager.model_to_cuda(detector.detector.florence2_model)
+
     if isinstance(image, str):
         image = Image.open(image).convert("RGB")
     
@@ -163,7 +213,7 @@ def generate_image(
     *images_captions_faces,  # Combine all unpacked arguments into one tuple
 ):
     torch.cuda.empty_cache()
-    num_images = 4
+    num_images = 1
 
     # Determine the number of images, captions, and faces based on the indexs length
     images = list(images_captions_faces[:num_inputs])
@@ -273,31 +323,69 @@ def generate_image(
         vae_skip_iter = None
     use_condition_sblora_control = True
     use_latent_sblora_control = True
-    image = generate_from_test_sample(
-        test_sample, model.pipe, model.config, 
-        num_images=num_images, 
-        target_height=target_height,
-        target_width=target_width,
-        seed=seed,
-        store_attn_map=store_attn_map, 
-        vae_skip_iter=vae_skip_iter,  # 使用新的参数
-        control_weight_lambda=control_weight_lambda,  # 传递新的参数
-        double_attention=double_attention,  # 新增参数
-        single_attention=single_attention,  # 新增参数
-        ip_scale=latent_dblora_scale_str,
-        use_latent_sblora_control=use_latent_sblora_control,
-        latent_sblora_scale=latent_sblora_scale_str,
-        use_condition_sblora_control=use_condition_sblora_control,
-        condition_sblora_scale=vae_lora_scale,
-    )
-    if isinstance(image, list):
-        num_cols = 2
-        num_rows = int(math.ceil(num_images / num_cols))
-        image = image_grid(image, num_rows, num_cols)
+    image = None
+    try:
+        image = generate_from_test_sample(
+            test_sample, model.pipe, model.config, 
+            num_images=num_images, 
+            target_height=target_height,
+            target_width=target_width,
+            seed=seed,
+            store_attn_map=store_attn_map, 
+            vae_skip_iter=vae_skip_iter,  # 使用新的参数
+            control_weight_lambda=control_weight_lambda,  # 传递新的参数
+            double_attention=double_attention,  # 新增参数
+            single_attention=single_attention,  # 新增参数
+            ip_scale=latent_dblora_scale_str,
+            use_latent_sblora_control=use_latent_sblora_control,
+            latent_sblora_scale=latent_sblora_scale_str,
+            use_condition_sblora_control=use_condition_sblora_control,
+            condition_sblora_scale=vae_lora_scale,
+            device=do_device,
+            forward_hook_manager=forward_hook_manager,
+        )
+        if isinstance(image, list):
+            num_cols = 2
+            num_rows = int(math.ceil(num_images / num_cols))
+            image = image_grid(image, num_rows, num_cols)
 
-    save_path = f"{temp_dir}/tmp_result.png"
-    image.save(save_path)
-
+        save_path = f"{temp_dir}/tmp_result.png"
+        image.save(save_path)
+    except torch.cuda.OutOfMemoryError:
+        torch.cuda.synchronize()
+        # 删除当前作用域内可能存在的大张量
+        del_vars = [var for var in locals().values() if isinstance(var, torch.Tensor)]
+        for var in del_vars:
+            del var
+        del_vars = [var for var in globals().values() if isinstance(var, torch.Tensor)]
+        for var in del_vars:
+            del var
+        # 减少 Python 对象的引用计数
+        gc.collect()
+        # 清空 CUDA 缓存
+        torch.cuda.empty_cache()
+        # 再次进行垃圾回收
+        gc.collect()
+        raise torch.cuda.OutOfMemoryError
+    except Exception as e:
+        print(f"Error: {e}")
+        raise e
+    
+    torch.cuda.synchronize()
+    # 删除当前作用域内可能存在的大张量
+    del_vars = [var for var in locals().values() if isinstance(var, torch.Tensor)]
+    for var in del_vars:
+        del var
+    del_vars = [var for var in globals().values() if isinstance(var, torch.Tensor)]
+    for var in del_vars:
+        del var
+    # 减少 Python 对象的引用计数
+    gc.collect()
+    # 清空 CUDA 缓存
+    torch.cuda.empty_cache()
+    # 再次进行垃圾回收
+    gc.collect()
+    
     return image
 
 def create_image_input(index, open=True, indexs_state=None):
@@ -569,5 +657,4 @@ with gr.Blocks() as demo:
         run_on_click=True
     )
 
-port = int(os.environ.get("ARNOLD_WORKER_0_PORT", "-1").split(",")[3])
-demo.queue().launch(share=True, inbrowser=True, server_name="0.0.0.0", server_port=port)
+demo.queue().launch(share=True, inbrowser=True, server_name=args.server_name, server_port=args.server_port)

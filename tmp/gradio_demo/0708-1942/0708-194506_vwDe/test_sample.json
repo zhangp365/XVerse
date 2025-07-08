@@ -1,0 +1,37 @@
+{
+    "input_images": [],
+    "position_delta": [
+        0,
+        -32
+    ],
+    "prompt": "a hamster wearing a tiny hat",
+    "target_height": 768,
+    "target_width": 768,
+    "seed": 42,
+    "cond_size": 256,
+    "vae_skip_iter": "0-0.05:1,0.8-1:1",
+    "lora_scale": "0-1:0.85",
+    "control_weight_lambda": "0-1:1/5",
+    "latent_sblora_scale": "0-1:0.85",
+    "condition_sblora_scale": "0-1:1.3",
+    "double_attention": false,
+    "single_attention": true,
+    "modulation": [
+        {
+            "type": "adapter",
+            "src_inputs": [
+                {
+                    "image_path": "tmp/gradio_demo/0708-1942/0708-194506_vwDe/tmp_resized_input_0.png",
+                    "caption": "a hamster"
+                }
+            ],
+            "use_words": [
+                [
+                    0,
+                    "hamster",
+                    "hamster"
+                ]
+            ]
+        }
+    ]
+}

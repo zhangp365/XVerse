@@ -70,8 +70,8 @@ class FlorenceSAM:
         self.florence2_processor = Florence2Processor.from_pretrained(
             FLORENCE2_MODEL_ID, 
         )
-        sam2_model = build_sam2(SAM2_CONFIG, SAM2_CHECKPOINT, device=self.device)
-        self.sam2_predictor = SAM2ImagePredictor(sam2_model)
+        self.sam2_model = build_sam2(SAM2_CONFIG, SAM2_CHECKPOINT, device=self.device)
+        self.sam2_predictor = SAM2ImagePredictor(self.sam2_model)
 
     def __str__(self):
         return "FlorenceSAM"

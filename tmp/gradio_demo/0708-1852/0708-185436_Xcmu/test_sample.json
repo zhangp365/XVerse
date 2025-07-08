@@ -1,0 +1,55 @@
+{
+    "input_images": [],
+    "position_delta": [
+        0,
+        -32
+    ],
+    "prompt": "a woman, a girl, and an old man standing together in a park.",
+    "target_height": 768,
+    "target_width": 768,
+    "seed": 42,
+    "cond_size": 256,
+    "vae_skip_iter": "0-0.05:1,0.8-1:1",
+    "lora_scale": "0-1:0.8",
+    "control_weight_lambda": "0-1:1/2.5/2.5/2.5",
+    "latent_sblora_scale": "0-1:0.8",
+    "condition_sblora_scale": "0-1:1.2",
+    "double_attention": false,
+    "single_attention": true,
+    "modulation": [
+        {
+            "type": "adapter",
+            "src_inputs": [
+                {
+                    "image_path": "tmp/gradio_demo/0708-1852/0708-185436_Xcmu/tmp_resized_input_0.png",
+                    "caption": "a woman"
+                },
+                {
+                    "image_path": "tmp/gradio_demo/0708-1852/0708-185436_Xcmu/tmp_resized_input_1.png",
+                    "caption": "a girl"
+                },
+                {
+                    "image_path": "tmp/gradio_demo/0708-1852/0708-185436_Xcmu/tmp_resized_input_2.png",
+                    "caption": "an old man"
+                }
+            ],
+            "use_words": [
+                [
+                    0,
+                    "woman",
+                    "woman"
+                ],
+                [
+                    1,
+                    "girl",
+                    "girl"
+                ],
+                [
+                    2,
+                    "an old man",
+                    "an old man"
+                ]
+            ]
+        }
+    ]
+}

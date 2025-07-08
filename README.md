@@ -16,6 +16,7 @@
 </p>
 
 ## 🔥 News
+- **2025.7.8**: Supports low VRAM inference, can run the XVerse model in 24GB VRAM.
 - **2025.6.26**: The code has been released!
 
 ![XVerse's capability in single/multi-subject personalization and semantic attribute control (pose, style, lighting)](sample/first_page.png)
@@ -111,6 +112,11 @@ For inference with multiple condition images, use the command below. This allows
 python inference_single_sample.py --prompt "ENT1, and ENT2 standing together in a park." --seed 42 --cond_size 256 --target_height 768 --target_width 768 --weight_id 2 --weight_ip 5 --latent_lora_scale 0.85 --vae_lora_scale 1.3 --vae_skip_iter_s1 0.05 --vae_skip_iter_s2 0.8 --images "sample/woman.jpg" "sample/girl.jpg" --captions "a woman" "a girl" --idips true true --save_path "generated_image_2.png" --num_images 1
 ```
 
+## ⚡️ Low-VRAM Inference
+- During inference with a single sample, you can enable low VRAM mode by adding the parameter `--use_low_vram True`. 
+- Additionally, you can also enable low VRAM mode by adding the parameter `--use_low_vram True` in `run_demo.py` to run XVerse smoothly on a 24GB VRAM GPU.
+- This allows you to perform inference with up to two conditional images on a GPU equipped with 24GB of VRAM. We will further support lower memory inference through quantitative models.
+
 ## Inference with XVerseBench
 
 ![XVerseBench](sample/XVerseBench.png)
@@ -130,9 +136,9 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 - [x] Release inference code for XVerseBench.
 - [x] Release inference code for gradio demo.
 - [x] Release inference code for single sample.
+- [x] Support inference in consumer-grade GPUs.
 - [ ] Release huggingface space demo.
 - [ ] Release Benchmark Leaderboard.
-- [ ] Support inference in consumer-grade GPUs.
 
 ## License
     

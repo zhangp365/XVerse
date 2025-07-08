@@ -15,6 +15,8 @@ class ForwardHookManager:
         return total - reserved
 
     def _free_up_memory(self, required_mem, cache_model = None):
+        print(f"required_mem: {required_mem}, available_mem: {self._get_available_memory()}")
+        print("len(self._load_order):", len(self._load_order))
         sorted_items = sorted(self._load_order.items(), key=lambda x: x[1])
         for model, value in sorted_items:
             if self._origin_states[model]['in_cuda']:
@@ -52,16 +54,17 @@ class ForwardHookManager:
                     }
             available_mem = self._get_available_memory()
             required_mem = self._origin_states[model]['cuda_memory']
+            print(f"required_mem: {required_mem}, available_mem: {available_mem}")
             if origin_device.type != 'cuda':
                 if available_mem * threshold < required_mem:
                     self._free_up_memory(required_mem)
                         # raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {self._get_available_memory()}")
-                model.to('cuda')
-                if model not in self._load_order:
-                    self._load_order[model] = 3
-            else:
-                if available_mem < required_mem * threshold:
-                    self._free_up_memory(required_mem, model)
+                    model.to('cuda')
+                    if model not in self._load_order:
+                        self._load_order[model] = 3
+                else:
+                    if available_mem < required_mem * threshold:
+                        self._free_up_memory(required_mem, model)
                         # raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {self._get_available_memory()}")
             self._load_order[model] += 1
             for other_model in self._load_order:

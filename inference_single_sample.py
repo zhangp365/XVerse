@@ -23,7 +23,8 @@ import string
 import random, time, os, math   
 
 from src.flux.generate import generate_from_test_sample, seed_everything
-from src.flux.pipeline_tools import CustomFluxPipeline, load_modulation_adapter, load_dit_lora, ForwardHookManager
+from src.flux.pipeline_tools import CustomFluxPipeline, load_modulation_adapter, load_dit_lora
+from src.utils.gpu_momory_utils import ForwardHookManager
 from src.utils.data_utils import get_train_config, image_grid, pil2tensor, json_dump, pad_to_square, cv2pil, merge_bboxes
 from eval.tools.face_id import FaceID
 from eval.tools.florence_sam import ObjectDetector
@@ -246,8 +247,10 @@ def main():
         for i in range(len(model.pipe.modulation_adapters)):
             model.pipe.modulation_adapters[i] = forward_hook_manager.register(model.pipe.modulation_adapters[i])
     else:
+        forward_hook_manager = None
         model.pipe=model.pipe.to("cuda")
     for i in range(20):
+        start = time.time()
         image = generate_image(
             model,
             args.prompt,
@@ -268,6 +271,8 @@ def main():
             *args.captions,
             *args.idips
         )
+        end = time.time()
+        print(f"Time: {end - start}")
 
     # 使用命令行传入的路径保存生成的图像
     image.save(args.save_path)

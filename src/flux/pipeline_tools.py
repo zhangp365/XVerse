@@ -40,7 +40,7 @@ import safetensors
 from src.adapters.mod_adapters import CLIPModAdapter
 from peft import LoraConfig, set_peft_model_state_dict
 from transformers import CLIPProcessor, CLIPModel, CLIPVisionModelWithProjection, CLIPVisionModel
-from diffusers import AutoencoderKL
+from diffusers import AutoencoderKL, FluxTransformer2DModel
 
 def encode_vae_images(pipeline: FluxPipeline, images: Tensor):
     images = pipeline.image_processor.preprocess(images)
@@ -515,6 +515,7 @@ def quantization(pipe, qtype):
             convert_to_float8_training(
                 pipe.transformer, module_filter_fn=module_filter_fn, config=Float8LinearConfig(pad_inner_dim=True)
             )
+
 class ForwardHookManager:
     def __init__(self):
         self.registered_models = []
@@ -526,22 +527,45 @@ class ForwardHookManager:
         reserved = torch.cuda.memory_reserved(0)
         return total - reserved
 
-    def _free_up_memory(self, required_mem):
+    def _free_up_memory(self, required_mem, cache_model = None):
+        print("len(self.load_order):", len(self.load_order))
         for model in reversed(self.load_order):
             if self.origin_states[model]['in_cuda']:
-                model.to(self.origin_states[model]['origin_device'])
-                self.origin_states[model]['in_cuda'] = False
-                self.load_order.remove(model)
-                
-                if self._get_available_memory() * 0.8 >= required_mem:
-                    torch.cuda.empty_cache()
-                    return True
+                if model != cache_model:
+                    model.to(self.origin_states[model]['origin_device'])
+                    self.origin_states[model]['in_cuda'] = False
+                    self.load_order.remove(model)
+                torch.cuda.empty_cache()
+                if cache_model == None:
+                    if self._get_available_memory() * 0.6 >= required_mem:
+                        return True
+                else:
+                    if self._get_available_memory() >= required_mem * 0.6:
+                        return True
         return False
+    def model_to_cuda(self, model):
+        if torch.cuda.is_available():
+            available_mem = self._get_available_memory()
+            required_mem = self.origin_states[model]['cuda_memory']
+            origin_device = model.device if hasattr(model, 'device') else self.origin_states[model]['origin_device']
+            if origin_device.type != 'cuda':
+                if available_mem * 0.6 < required_mem:
+                    if not self._free_up_memory(required_mem):
+                        raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+                model.to('cuda')
+                self.load_order.append(model)
+            else:
+                if self._get_available_memory() < required_mem * 0.6:
+                    if not self._free_up_memory(required_mem, model):
+                        raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+            self.origin_states[model]['in_cuda'] = True
+        return model
 
     def _register(self, model):
         if model not in self.registered_models:
             origin_device = model.device if hasattr(model, 'device') else torch.device('cpu')
             if torch.cuda.is_available() and origin_device.type != 'cuda':
+
                 with torch.no_grad():
                     ori_cuda_memory = torch.cuda.memory_allocated()
                     model.to("cuda")
@@ -556,16 +580,20 @@ class ForwardHookManager:
                     'in_cuda': False,
                 }
 
-                def custom_forward(*args, **kwargs):
-                    origin_device = model.device if hasattr(model, 'device') else self.origin_states[model]['origin_device']
-                    if torch.cuda.is_available() and origin_device.type != 'cuda':
+                def custom_forward(*args, **kwargs):      
+                    if torch.cuda.is_available():
                         available_mem = self._get_available_memory()
                         required_mem = self.origin_states[model]['cuda_memory']
-                        if available_mem * 0.8 < required_mem:
-                            if not self._free_up_memory(required_mem):
-                                raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
-
-                        model.to('cuda')
+                        origin_device = model.device if hasattr(model, 'device') else self.origin_states[model]['origin_device']
+                        if origin_device.type != 'cuda':
+                            if available_mem * 0.6 < required_mem:
+                                if not self._free_up_memory(required_mem):
+                                    raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+                            model.to('cuda')
+                        else:
+                            if self._get_available_memory() < required_mem * 0.6:
+                                if not self._free_up_memory(required_mem, model):
+                                    raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
                         self.load_order.append(model)
                         self.origin_states[model]['in_cuda'] = True
                         args = tuple(arg.cuda() if isinstance(arg, torch.Tensor) and arg.device != 'cuda' else arg     
@@ -603,7 +631,7 @@ class CustomFluxPipeline:
     def __init__(
         self,
         config,
-        device="cuda",
+        device=torch.device("cuda"),
         ckpt_root=None,
         ckpt_root_condition=None,
         torch_dtype=torch.bfloat16,
@@ -636,14 +664,7 @@ class CustomFluxPipeline:
             if ckpt_root_condition is None and (config["model"]["use_condition_dblock_lora"] or config["model"]["use_condition_sblock_lora"]):
                 ckpt_root_condition = ckpt_root
             load_dit_lora(self, self.pipe, config, torch_dtype, device, f"{ckpt_root}", f"{ckpt_root_condition}", is_training=False)
-        # self.pipe=self.pipe.to("cuda")
-        self.forward_hook_manager = ForwardHookManager()
-        self.pipe.transformer = self.forward_hook_manager.register(self.pipe.transformer)
-        self.pipe.text_encoder = self.forward_hook_manager.register(self.pipe.text_encoder)
-        self.pipe.vae = self.forward_hook_manager.register(self.pipe.vae)
-        self.pipe.text_encoder_2 = self.forward_hook_manager.register(self.pipe.text_encoder_2)
-        self.pipe.clip_model = self.forward_hook_manager.register(self.pipe.clip_model)
-        # self.pipe.clip_processor = forward_hook(self.pipe.clip_processor)
+
 
     def add_modulation_adapter(self, modulation_adapter):
         self.modulation_adapters.append(modulation_adapter)
@@ -654,14 +675,14 @@ class CustomFluxPipeline:
         self.pipe.modulation_adapters = []
         torch.cuda.empty_cache()
 
-def load_clip(self, config, torch_dtype, device, ckpt_dir=None, is_training=False):
+def load_clip(pipeline, config, torch_dtype, device, ckpt_dir=None, is_training=False):
     model_path = os.getenv("CLIP_MODEL_PATH", "openai/clip-vit-large-patch14")
     clip_model = CLIPVisionModelWithProjection.from_pretrained(model_path).to(device, dtype=torch_dtype)
     clip_processor = CLIPProcessor.from_pretrained(model_path)
-    self.pipe.clip_model = clip_model
-    self.pipe.clip_processor = clip_processor
+    pipeline.pipe.clip_model = clip_model
+    pipeline.pipe.clip_processor = clip_processor
 
-def load_dit_lora(self, pipe, config, torch_dtype, device, ckpt_dir=None, condition_ckpt_dir=None, is_training=False):
+def load_dit_lora(pipeline, pipe, config, torch_dtype, device, ckpt_dir=None, condition_ckpt_dir=None, is_training=False):
 
     if not config["model"]["use_condition_dblock_lora"] and not config["model"]["use_condition_sblock_lora"] and not config["model"]["use_dit_lora"]:
         print("[load_dit_lora] no dit lora, no condition lora")
@@ -732,7 +753,7 @@ def load_dit_lora(self, pipe, config, torch_dtype, device, ckpt_dir=None, condit
     lora_layers = [l[1] for l in lora_layers]
     return lora_layers
 
-def load_modulation_adapter(self, config, torch_dtype, device, ckpt_dir=None, is_training=False):
+def load_modulation_adapter(pipeline, config, torch_dtype, device, ckpt_dir=None, is_training=False):
     adapter_type = config["model"]["modulation"]["adapter_type"]
 
     if ckpt_dir is not None and os.path.exists(ckpt_dir):
@@ -780,18 +801,16 @@ def load_modulation_adapter(self, config, torch_dtype, device, ckpt_dir=None, is
                 print(e)
     else:
         modulation_adapter.requires_grad_(False)
-
     modulation_adapter.to(device, dtype=torch_dtype)
-    self.forward_hook_manager.register(modulation_adapter)
     return modulation_adapter
 
 
-def load_ckpt(self, ckpt_dir, is_training=False):
-    if self.config["model"]["use_dit_lora"]:
-        self.pipe.transformer.delete_adapters(["subject"])
+def load_ckpt(pipeline, ckpt_dir, is_training=False):
+    if pipeline.config["model"]["use_dit_lora"]:
+        pipeline.pipe.transformer.delete_adapters(["subject"])
         lora_path = f"{ckpt_dir}/pytorch_lora_weights.safetensors"
         print(f"Loading DIT Lora from {lora_path}")
-        self.pipe.load_lora_weights(lora_path, adapter_name="subject")
+        pipeline.pipe.load_lora_weights(lora_path, adapter_name="subject")
 
         
 

@@ -450,7 +450,7 @@ def norm1_forward(
 
 
 def block_forward(
-    self,
+    block,
     hidden_states: torch.FloatTensor,
     encoder_hidden_states: torch.FloatTensor,
     condition_latents: torch.FloatTensor,
@@ -496,12 +496,12 @@ def block_forward(
     if use_cond:
         cond_lora_activate = model_config["use_condition_dblock_lora"]
         with enable_lora(
-            (self.norm1.linear,), 
+            (block.norm1.linear,), 
             dit_activated=activate_norm1 if train_partial_latent_lora else not cond_lora_activate, cond_activated=cond_lora_activate,
         ):
             norm_condition_latents, cond_gate_msa, cond_shift_mlp, cond_scale_mlp, cond_gate_mlp = (
                 norm1_forward(
-                    self.norm1,
+                    block.norm1,
                     condition_latents,
                     emb=cond_temb, 
                 )
@@ -513,13 +513,13 @@ def block_forward(
         if delta_emb_cblock is not None:
             delta_emb_img_cblock, delta_emb_cblock = delta_emb_cblock.chunk(2, dim=-1)
 
-    with enable_lora((self.norm1.linear,), activate_norm1 if train_partial_latent_lora else model_config["latent_lora"]):
+    with enable_lora((block.norm1.linear,), activate_norm1 if train_partial_latent_lora else model_config["latent_lora"]):
         if use_img_mod and encoder_hidden_states is not None:
             with torch.no_grad():
-                attn = self.attn
+                attn = block.attn
 
-                norm_img = self.norm1(hidden_states, emb=temb)[0]
-                norm_text = self.norm1_context(encoder_hidden_states, emb=temb)[0]
+                norm_img = block.norm1(hidden_states, emb=temb)[0]
+                norm_text = block.norm1_context(encoder_hidden_states, emb=temb)[0]
                 
                 img_query = attn.to_q(norm_img)
                 img_key = attn.to_k(norm_img)
@@ -561,7 +561,7 @@ def block_forward(
 
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             norm1_forward(
-                self.norm1,
+                block.norm1,
                 hidden_states,
                 emb=temb,
                 delta_emb=delta_emb_img,
@@ -571,10 +571,10 @@ def block_forward(
             )
         )
     # Modulation for double block
-    with enable_lora((self.norm1_context.linear,), activate_norm1_context if train_partial_text_lora else model_config["text_lora"]):
+    with enable_lora((block.norm1_context.linear,), activate_norm1_context if train_partial_text_lora else model_config["text_lora"]):
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = (
             norm1_context_forward(
-                self.norm1_context, 
+                block.norm1_context, 
                 encoder_hidden_states, 
                 emb=temb, 
                 delta_emb=delta_emb if use_text_mod else None,
@@ -588,7 +588,7 @@ def block_forward(
 
     # Attention.
     result = attn_forward(
-        self.attn,
+        block.attn,
         model_config=model_config,
         hidden_states=norm_hidden_states,
         encoder_hidden_states=norm_encoder_hidden_states,
@@ -620,39 +620,39 @@ def block_forward(
 
     # LayerNorm + MLP.
     # 1. hidden_states
-    norm_hidden_states = self.norm2(hidden_states)
+    norm_hidden_states = block.norm2(hidden_states)
     norm_hidden_states = (
         norm_hidden_states * (1 + scale_mlp) + shift_mlp  # NOTE: changed by img mod
     )
     # 2. encoder_hidden_states
-    norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+    norm_encoder_hidden_states = block.norm2_context(encoder_hidden_states)
     norm_encoder_hidden_states = (
         norm_encoder_hidden_states * (1 + c_scale_mlp) + c_shift_mlp  # NOTE: changed by delta_temb
     )
     # 3. condition_latents
     if use_cond:
-        norm_condition_latents = self.norm2(condition_latents)
+        norm_condition_latents = block.norm2(condition_latents)
         norm_condition_latents = (
             norm_condition_latents * (1 + cond_scale_mlp) + cond_shift_mlp # NOTE: changed by img mod
         )
 
     # Feed-forward.
-    with enable_lora((self.ff.net[2],), activate_ff if train_partial_latent_lora else model_config["latent_lora"]):
+    with enable_lora((block.ff.net[2],), activate_ff if train_partial_latent_lora else model_config["latent_lora"]):
         # 1. hidden_states
-        ff_output = self.ff(norm_hidden_states)
+        ff_output = block.ff(norm_hidden_states)
         ff_output = gate_mlp * ff_output  # NOTE: changed by img mod
     # 2. encoder_hidden_states
-    with enable_lora((self.ff_context.net[2],), activate_ff_context if train_partial_text_lora else model_config["text_lora"]):
-        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+    with enable_lora((block.ff_context.net[2],), activate_ff_context if train_partial_text_lora else model_config["text_lora"]):
+        context_ff_output = block.ff_context(norm_encoder_hidden_states)
         context_ff_output = c_gate_mlp * context_ff_output  # NOTE: changed by delta_temb
     # 3. condition_latents
     if use_cond:
         cond_lora_activate = model_config["use_condition_dblock_lora"]
         with enable_lora(
-            (self.ff.net[2],), 
+            (block.ff.net[2],), 
             dit_activated=activate_ff if train_partial_latent_lora else not cond_lora_activate, cond_activated=cond_lora_activate,
         ):
-            cond_ff_output = self.ff(norm_condition_latents)
+            cond_ff_output = block.ff(norm_condition_latents)
             cond_ff_output = cond_gate_mlp * cond_ff_output  # NOTE: changed by img mod
 
     # Process feed-forward outputs.
@@ -668,7 +668,7 @@ def block_forward(
     return encoder_hidden_states, hidden_states, condition_latents if use_cond else None
 
 def single_norm_forward(
-    self,
+    block,
     x: torch.Tensor,
     timestep: Optional[torch.Tensor] = None,
     class_labels: Optional[torch.LongTensor] = None,
@@ -679,33 +679,33 @@ def single_norm_forward(
     delta_emb_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if delta_emb is None:
-        emb = self.linear(self.silu(emb)) # (B, 3072) -> (B, 9216)
+        emb = block.linear(block.silu(emb)) # (B, 3072) -> (B, 9216)
         emb = emb.unsqueeze(1) # (B, 1, 9216)
         shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=-1) # (B, 1, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, S, 3072) * (B, 1, 3072)
+        x = block.norm(x) * (1 + scale_msa) + shift_msa # (B, S, 3072) * (B, 1, 3072)
         return x, gate_msa
     else:
         img_text_seq_length = x.shape[1] # S+
         text_seq_length = delta_emb_mask.shape[1] # S
         # (B, 3072) -> (B, 9216) -> (B, S+, 9216)
-        emb_orig = self.linear(self.silu(emb)).unsqueeze(1).expand((-1, img_text_seq_length, -1))
+        emb_orig = block.linear(block.silu(emb)).unsqueeze(1).expand((-1, img_text_seq_length, -1))
         # (B, 3072) -> (B, 1, 3072) -> (B, S, 3072) -> (B, S, 9216)
         if delta_emb_cblock is None:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb))
+            emb_new = block.linear(block.silu(emb.unsqueeze(1) + delta_emb))
         else:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
+            emb_new = block.linear(block.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
 
         emb_text = torch.where(delta_emb_mask.unsqueeze(-1), emb_new, emb_orig[:, :text_seq_length]) # (B, S, 9216)
         emb_img = emb_orig[:, text_seq_length:] # (B, s, 9216)
         emb = torch.cat([emb_text, emb_img], dim=1) # (B, S+, 9216)
 
         shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=-1) # (B, S+, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, S+, 3072)
+        x = block.norm(x) * (1 + scale_msa) + shift_msa # (B, S+, 3072)
         return x, gate_msa
 
 
 def single_block_forward(
-    self,
+    block,
     hidden_states: torch.FloatTensor,
     temb: torch.FloatTensor,
     image_rotary_emb=None,
@@ -742,34 +742,34 @@ def single_block_forward(
         if "projout" not in train_partial_lora_layers:
             activate_projout = False
 
-    with enable_lora((self.norm.linear,), activate_norm if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
+    with enable_lora((block.norm.linear,), activate_norm if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
         # Modulation for single block
         norm_hidden_states, gate = single_norm_forward(
-            self.norm, 
+            block.norm, 
             hidden_states, 
             emb=temb,
             delta_emb=delta_emb if use_text_mod else None,
             delta_emb_cblock=delta_emb_cblock if use_text_mod else None,
             delta_emb_mask=delta_emb_mask if use_text_mod else None,
         )
-    with enable_lora((self.proj_mlp,), activate_projmlp if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
-        mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+    with enable_lora((block.proj_mlp,), activate_projmlp if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
+        mlp_hidden_states = block.act_mlp(block.proj_mlp(norm_hidden_states))
     if using_cond:
         cond_lora_activate = model_config["use_condition_sblock_lora"]
         with enable_lora(
-            (self.norm.linear,), 
+            (block.norm.linear,), 
             dit_activated=activate_norm if train_partial_lora else not cond_lora_activate, cond_activated=cond_lora_activate, latent_sblora_weight=condition_sblora_weight
         ):
             residual_cond = condition_latents
-            norm_condition_latents, cond_gate = self.norm(condition_latents, emb=cond_temb)
+            norm_condition_latents, cond_gate = block.norm(condition_latents, emb=cond_temb)
         with enable_lora(
-            (self.proj_mlp,), 
+            (block.proj_mlp,), 
             dit_activated=activate_projmlp if train_partial_lora else not cond_lora_activate, cond_activated=cond_lora_activate, latent_sblora_weight=condition_sblora_weight
         ):
-            mlp_cond_hidden_states = self.act_mlp(self.proj_mlp(norm_condition_latents))
+            mlp_cond_hidden_states = block.act_mlp(block.proj_mlp(norm_condition_latents))
 
     attn_output = attn_forward(
-        self.attn,
+        block.attn,
         model_config=model_config,
         hidden_states=norm_hidden_states,
         image_rotary_emb=image_rotary_emb,
@@ -792,20 +792,20 @@ def single_block_forward(
     if using_cond:
         attn_output, cond_attn_output = attn_output
 
-    with enable_lora((self.proj_out,), activate_projout if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
+    with enable_lora((block.proj_out,), activate_projout if train_partial_lora else model_config["sblock_lora"], latent_sblora_weight=latent_sblora_weight):
         hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
         # gate = (B, 1, 3072) or (B, S+, 3072)
-        hidden_states = gate * self.proj_out(hidden_states)
+        hidden_states = gate * block.proj_out(hidden_states)
         hidden_states = residual + hidden_states
     if using_cond:
         cond_lora_activate = model_config["use_condition_sblock_lora"]
         with enable_lora(
-            (self.proj_out,), 
+            (block.proj_out,), 
             dit_activated=activate_projout if train_partial_lora else not cond_lora_activate, cond_activated=cond_lora_activate, latent_sblora_weight=condition_sblora_weight
         ):
             condition_latents = torch.cat([cond_attn_output, mlp_cond_hidden_states], dim=2)
             cond_gate = cond_gate.unsqueeze(1)
-            condition_latents = cond_gate * self.proj_out(condition_latents)
+            condition_latents = cond_gate * block.proj_out(condition_latents)
             condition_latents = residual_cond + condition_latents
 
     if hidden_states.dtype == torch.float16:

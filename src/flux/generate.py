@@ -18,7 +18,7 @@ import yaml, os
 from PIL import Image
 from diffusers.pipelines import FluxPipeline
 from typing import List, Union, Optional, Dict, Any, Callable
-from src.flux.transformer import tranformer_forward
+from src.flux.transformer import transformer_forward
 from src.flux.condition import Condition
 
 from diffusers.pipelines.flux.pipeline_flux import (
@@ -127,6 +127,7 @@ def generate(
     condition_sblora_scale: str = None,
     idips = None,
     device = torch.device('cuda'),
+    forward_hook_manager=None,
     **params: dict,
 ):
     model_config = model_config or get_config(config_path).get("model", {})
@@ -176,7 +177,7 @@ def generate(
                 continue
             module.c_factor = torch.ones(1, 1) * vae_condition_scale
 
-    self = pipeline
+    # self = pipeline
     (
         prompt,
         prompt_2,
@@ -199,11 +200,11 @@ def generate(
         verbose,
     ) = prepare_params(**params)
 
-    height = height or self.default_sample_size * self.vae_scale_factor
-    width = width or self.default_sample_size * self.vae_scale_factor
+    height = height or pipeline.default_sample_size * pipeline.vae_scale_factor
+    width = width or pipeline.default_sample_size * pipeline.vae_scale_factor
 
     # 1. Check inputs. Raise error if not correct
-    self.check_inputs(
+    pipeline.check_inputs(
         prompt,
         prompt_2,
         height,
@@ -214,9 +215,9 @@ def generate(
         max_sequence_length=max_sequence_length,
     )
 
-    self._guidance_scale = guidance_scale
-    self._joint_attention_kwargs = joint_attention_kwargs
-    self._interrupt = False
+    pipeline._guidance_scale = guidance_scale
+    pipeline._joint_attention_kwargs = joint_attention_kwargs
+    pipeline._interrupt = False
 
     # 2. Define call parameters
     if prompt is not None and isinstance(prompt, str):
@@ -229,8 +230,8 @@ def generate(
     # device = self._execution_device
 
     lora_scale = (
-        self.joint_attention_kwargs.get("scale", None)
-        if self.joint_attention_kwargs is not None
+        pipeline.joint_attention_kwargs.get("scale", None)
+        if pipeline.joint_attention_kwargs is not None
         else None
     )
     (
@@ -238,8 +239,8 @@ def generate(
         pooled_prompt_embeds,
         text_ids,
     ) = encode_prompt_with_clip_t5(
-        self=self,
-        prompt="" if self.text_encoder_2 is None else prompt,
+        self=pipeline,
+        prompt="" if pipeline.text_encoder_2 is None else prompt,
         prompt_2=None,
         prompt_embeds=prompt_embeds,
         pooled_prompt_embeds=pooled_prompt_embeds,
@@ -250,8 +251,8 @@ def generate(
     )
 
     # 4. Prepare latent variables
-    num_channels_latents = self.transformer.config.in_channels // 4
-    latents, latent_image_ids = self.prepare_latents(
+    num_channels_latents = pipeline.transformer.config.in_channels // 4
+    latents, latent_image_ids = pipeline.prepare_latents(
         batch_size * num_images_per_prompt,
         num_channels_latents,
         height,
@@ -269,13 +270,13 @@ def generate(
     image_seq_len = latents.shape[1]
     mu = calculate_shift(
         image_seq_len,
-        self.scheduler.config.base_image_seq_len,
-        self.scheduler.config.max_image_seq_len,
-        self.scheduler.config.base_shift,
-        self.scheduler.config.max_shift,
+        pipeline.scheduler.config.base_image_seq_len,
+        pipeline.scheduler.config.max_image_seq_len,
+        pipeline.scheduler.config.base_shift,
+        pipeline.scheduler.config.max_shift,
     )
     timesteps, num_inference_steps = retrieve_timesteps(
-        self.scheduler,
+        pipeline.scheduler,
         num_inference_steps,
         device,
         timesteps,
@@ -283,14 +284,14 @@ def generate(
         mu=mu,
     )
     num_warmup_steps = max(
-        len(timesteps) - num_inference_steps * self.scheduler.order, 0
+        len(timesteps) - num_inference_steps * pipeline.scheduler.order, 0
     )
-    self._num_timesteps = len(timesteps)
+    pipeline._num_timesteps = len(timesteps)
 
     attn_map = None
 
     # 6. Denoising loop
-    with self.progress_bar(total=num_inference_steps) as progress_bar:
+    with pipeline.progress_bar(total=num_inference_steps) as progress_bar:
         totalsteps = timesteps[0]
         if control_weight_lambda is not None:
             print("control_weight_lambda", control_weight_lambda)
@@ -342,8 +343,8 @@ def generate(
             attn_map = torch.ones(batch_size, latent_height, latent_width, 128, device=latents.device, dtype=torch.bfloat16)
             print("contol_weight_only", attn_map.shape)
 
-        self.scheduler.set_begin_index(0)
-        self.scheduler._init_step_index(0)
+        pipeline.scheduler.set_begin_index(0)
+        pipeline.scheduler._init_step_index(0)
         for i, t in enumerate(timesteps):
             
             if control_weight_lambda is not None:
@@ -362,7 +363,7 @@ def generate(
                     model_config["use_attention_single"] = False
                     use_attention = False
                      
-            if self.interrupt:
+            if pipeline.interrupt:
                 continue
 
             if isinstance(delta_emb, list):
@@ -381,12 +382,12 @@ def generate(
             text_ids = torch.zeros(prompt_embeds.shape[1], 3).to(device=device, dtype=prompt_embeds.dtype)
 
             # handle guidance
-            if self.transformer.config.guidance_embeds:
+            if pipeline.transformer.config.guidance_embeds:
                 guidance = torch.tensor([guidance_scale], device=device)
                 guidance = guidance.expand(latents.shape[0])
             else:
                 guidance = None
-            self.transformer.enable_lora()
+            pipeline.transformer.enable_lora()
             
             lora_weight  = 1
             if ip_scale is not None:
@@ -426,13 +427,13 @@ def generate(
                 if vae_skip_iter_t:
                     print(f"timestep:{t}, skip vae:{vae_skip_iter_t}")               
 
-            torch.cuda.empty_cache()
             torch.cuda.synchronize()
-            print(f"cgr before self.transformer torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
-            print(f"cgr before self.transformer torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
-            self.transformer = self.transformer.to(device)
-            noise_pred = tranformer_forward(
-                self.transformer,
+            print(f"cgr before pipeline.transformer torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
+            print(f"cgr before pipeline.transformer torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
+            if forward_hook_manager is not None:
+                pipeline.transformer = forward_hook_manager.model_to_cuda(pipeline.transformer)
+            noise_pred = transformer_forward(
+                pipeline.transformer,
                 model_config=model_config,
                 # Inputs of the condition (new feature)
                 text_cond_mask=text_cond_mask,
@@ -463,11 +464,11 @@ def generate(
             )[0]
 
             if use_attention:
-                attn_maps, _ = gather_attn_maps(self.transformer, clear=True)
+                attn_maps, _ = gather_attn_maps(pipeline.transformer, clear=True)
 
             # compute the previous noisy sample x_t -> x_t-1
             latents_dtype = latents.dtype
-            latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+            latents = pipeline.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
             if latents.dtype != latents_dtype:
                 if torch.backends.mps.is_available():
@@ -478,14 +479,14 @@ def generate(
                 callback_kwargs = {}
                 for k in callback_on_step_end_tensor_inputs:
                     callback_kwargs[k] = locals()[k]
-                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                callback_outputs = callback_on_step_end(pipeline, i, t, callback_kwargs)
 
                 latents = callback_outputs.pop("latents", latents)
                 prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
 
             # call the callback, if provided
             if i == len(timesteps) - 1 or (
-                (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                (i + 1) > num_warmup_steps and (i + 1) % pipeline.scheduler.order == 0
             ):
                 progress_bar.update()
 
@@ -493,17 +494,17 @@ def generate(
         image = latents
 
     else:
-        latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
+        latents = pipeline._unpack_latents(latents, height, width, pipeline.vae_scale_factor)
         latents = (
-            latents / self.vae.config.scaling_factor
-        ) + self.vae.config.shift_factor
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = self.image_processor.postprocess(image, output_type=output_type)
+            latents / pipeline.vae.config.scaling_factor
+        ) + pipeline.vae.config.shift_factor
+        image = pipeline.vae.decode(latents, return_dict=False)[0]
+        image = pipeline.image_processor.postprocess(image, output_type=output_type)
 
     # Offload all models
-    self.maybe_free_model_hooks()
+    pipeline.maybe_free_model_hooks()
 
-    self.transformer.enable_lora()
+    pipeline.transformer.enable_lora()
 
     if vae_condition_scale != 1:
         for name, module in pipeline.transformer.named_modules():
@@ -535,6 +536,7 @@ def generate_from_test_sample(
     condition_sblora_scale: str = None,
     use_idip = False,
     device = torch.device('cuda'),
+    forward_hook_manager=None,
     **kargs
 ):
     target_size = config["train"]["dataset"]["val_target_size"]
@@ -835,6 +837,7 @@ def generate_from_test_sample(
             condition_sblora_scale=condition_sblora_scale,
             idips=idips if use_idip else None,
             device=device,
+            forward_hook_manager=forward_hook_manager,
             **kargs,
         ).images[0]
 

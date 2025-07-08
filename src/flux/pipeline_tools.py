@@ -527,7 +527,7 @@ class CustomFluxPipeline:
     ):
         model_path = os.getenv("FLUX_MODEL_PATH", "black-forest-labs/FLUX.1-dev")
         print("[CustomFluxPipeline] Loading FLUX Pipeline")
-        self.pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype).to(device)
+        self.pipe = FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype)
 
         # self.pipe.vae = self.pipe.vae.to(device, dtype=torch_dtype)
         # self.pipe.transformer = self.pipe.transformer.to(device, dtype=torch_dtype)
@@ -553,7 +553,7 @@ class CustomFluxPipeline:
             if ckpt_root_condition is None and (config["model"]["use_condition_dblock_lora"] or config["model"]["use_condition_sblock_lora"]):
                 ckpt_root_condition = ckpt_root
             load_dit_lora(self, self.pipe, config, torch_dtype, device, f"{ckpt_root}", f"{ckpt_root_condition}", is_training=False)
-
+        self.pipe.to(device)
 
     def add_modulation_adapter(self, modulation_adapter):
         self.modulation_adapters.append(modulation_adapter)

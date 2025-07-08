@@ -3,3 +3,4 @@ assets/XVerseBench/object/*
 __pycache__
 checkpoints/*
 generated_*
+tmp

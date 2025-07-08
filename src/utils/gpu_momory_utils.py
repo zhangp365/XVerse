@@ -97,16 +97,14 @@ class ForwardHookManager:
                         origin_device = model.device if hasattr(model, 'device') else self._origin_states[model]['origin_device']
                         if origin_device.type != 'cuda':
                             if available_mem * threshold < required_mem:
-                                if not self._free_up_memory(required_mem):
-                                    raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+                                self._free_up_memory(required_mem)
                             model.to('cuda')
                             
                             if model not in self._load_order:
                                 self._load_order[model] = 3
                         else:
                             if self._get_available_memory() < required_mem * threshold:
-                                if not self._free_up_memory(required_mem, model):
-                                    raise RuntimeError(f"Insufficient GPU memory. Required: {required_mem}, Available: {available_mem}")
+                                self._free_up_memory(required_mem, model)
                         self._origin_states[model]['in_cuda'] = True
                         self._load_order[model] += 1
                         for other_model in self._load_order:

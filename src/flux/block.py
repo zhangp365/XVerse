@@ -374,7 +374,7 @@ def set_delta_by_start_end(
     return delta_emb, delta_emb_pblock, delta_emb_mask
 
 def norm1_context_forward(
-    self,
+    norm1_context,
     x: torch.Tensor,
     condition_latents: Optional[torch.Tensor] = None, 
     timestep: Optional[torch.Tensor] = None,
@@ -393,27 +393,27 @@ def norm1_context_forward(
         assert False
 
     if delta_emb is None:
-        emb = self.linear(self.silu(emb)) # (B, 3072) -> (B, 18432)
+        emb = norm1_context.linear(norm1_context.silu(emb)) # (B, 3072) -> (B, 18432)
         emb = emb.unsqueeze(1) # (B, 1, 18432)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=-1) # (B, 1, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, 1, 3072)
+        x = norm1_context.norm(x) * (1 + scale_msa) + shift_msa # (B, 1, 3072)
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
     else:
         # (B, 3072) > (B, 18432) -> (B, S, 18432)
-        emb_orig = self.linear(self.silu(emb)).unsqueeze(1).expand((-1, seq_length, -1))
+        emb_orig = norm1_context.linear(norm1_context.silu(emb)).unsqueeze(1).expand((-1, seq_length, -1))
         # (B, 3072) -> (B, 1, 3072) -> (B, S, 3072) -> (B, S, 18432)
         if delta_emb_cblock is None:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb))
+            emb_new = norm1_context.linear(norm1_context.silu(emb.unsqueeze(1) + delta_emb))
         else:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
+            emb_new = norm1_context.linear(norm1_context.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
         emb = torch.where(delta_emb_mask.unsqueeze(-1), emb_new, emb_orig) # (B, S, 18432)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=-1) # (B, S, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, S, 3072)
+        x = norm1_context.norm(x) * (1 + scale_msa) + shift_msa # (B, S, 3072)
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
         
 
 def norm1_forward(
-    self,
+    norm1,
     x: torch.Tensor,
     timestep: Optional[torch.Tensor] = None,
     class_labels: Optional[torch.LongTensor] = None,
@@ -425,27 +425,27 @@ def norm1_forward(
     t2i_attn_map: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     if delta_emb is None:
-        emb = self.linear(self.silu(emb)) # (B, 3072) -> (B, 18432)
+        emb = norm1.linear(norm1.silu(emb)) # (B, 3072) -> (B, 18432)
         emb = emb.unsqueeze(1) # (B, 1, 18432)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=-1) # (B, 1, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, 1, 3072)
+        x = norm1.norm(x) * (1 + scale_msa) + shift_msa # (B, 1, 3072)
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
     else:
         raise NotImplementedError()
         batch_size, HW = x.shape[:2]
         seq_length = t2i_attn_map.shape[-1]
         # (B, 3072) > (B, 18432) -> (B, S, 18432)
-        emb_orig = self.linear(self.silu(emb)).unsqueeze(1).expand((-1, seq_length, -1))
+        emb_orig = norm1.linear(norm1.silu(emb)).unsqueeze(1).expand((-1, seq_length, -1))
         # (B, 3072) -> (B, 1, 3072) -> (B, S, 3072) -> (B, S, 18432)
         if delta_emb_cblock is None:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb))
+            emb_new = norm1.linear(norm1.silu(emb.unsqueeze(1) + delta_emb))
         else:
-            emb_new = self.linear(self.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
+            emb_new = norm1.linear(norm1.silu(emb.unsqueeze(1) + delta_emb + delta_emb_cblock))
         # attn_weight (B, HW, S)
         emb = torch.where(delta_emb_mask.unsqueeze(-1), emb_new, emb_orig) # (B, S, 18432)
         emb = t2i_attn_map @ emb    # (B, HW, 18432)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=-1) # (B, HW, 3072)
-        x = self.norm(x) * (1 + scale_msa) + shift_msa # (B, HW, 3072)
+        x = norm1.norm(x) * (1 + scale_msa) + shift_msa # (B, HW, 3072)
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
 
 

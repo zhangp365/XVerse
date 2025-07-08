@@ -427,9 +427,6 @@ def generate(
                 if vae_skip_iter_t:
                     print(f"timestep:{t}, skip vae:{vae_skip_iter_t}")               
 
-            torch.cuda.synchronize()
-            print(f"cgr before pipeline.transformer torch.cuda.memory_allocated:{torch.cuda.memory_allocated()/1024/1024/1024}GB")
-            print(f"cgr before pipeline.transformer torch.cuda.memory_cached:{torch.cuda.memory_cached()/1024/1024/1024}GB")
             if forward_hook_manager is not None:
                 pipeline.transformer = forward_hook_manager.model_to_cuda(pipeline.transformer)
             noise_pred = transformer_forward(

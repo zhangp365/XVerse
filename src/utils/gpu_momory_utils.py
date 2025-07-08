@@ -115,9 +115,7 @@ class ForwardHookManager:
                         kwargs = {k: v.cuda() if isinstance(v, torch.Tensor) and v.device != 'cuda' else v 
                                 for k, v in kwargs.items()}
 
-                    start = time.time()
                     result = self._origin_states[model]['origin_forward'](*args, **kwargs)
-                    print(f"[ForwardHook] Model: {model.__class__.__name__}, Time: {time.time() - start}")
                     return result
 
                 model.forward = custom_forward

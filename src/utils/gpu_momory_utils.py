@@ -15,9 +15,9 @@ class ForwardHookManager:
         return total - reserved
 
     def _free_up_memory(self, required_mem, cache_model = None):
-        print("len(self._load_order):", len(self._load_order),  [model.__class__.__name__ for model in self._load_order.keys()])
-        print("Available memory:", self._get_available_memory())
-        print("required_mem:", required_mem)
+        # print("len(self._load_order):", len(self._load_order),  [model.__class__.__name__ for model in self._load_order.keys()])
+        # print("Available memory:", self._get_available_memory())
+        # print("required_mem:", required_mem)
         sorted_items = sorted(self._load_order.items(), key=lambda x: x[1])
         for model, value in sorted_items:
             if self._origin_states[model]['in_cuda']:
@@ -56,7 +56,7 @@ class ForwardHookManager:
                     }
             available_mem = self._get_available_memory()
             required_mem = self._origin_states[model]['cuda_memory']
-            print(f"required_mem: {required_mem}, available_mem: {available_mem}")
+            # print(f"required_mem: {required_mem}, available_mem: {available_mem}")
             if origin_device.type != 'cuda':
                 if available_mem - threshold_mem < required_mem:
                     self._free_up_memory(required_mem)

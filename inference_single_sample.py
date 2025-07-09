@@ -186,8 +186,8 @@ def main():
 
     args = parser.parse_args()
 
-    size = 16 * 1024 * 1024 * 1024 // 4     
-    big_tensor = torch.randn(size, dtype=torch.float32, device='cuda')
+    # size = 16 * 1024 * 1024 * 1024 // 4     
+    # big_tensor = torch.randn(size, dtype=torch.float32, device='cuda')
 
     # 验证输入参数
     if args.images and args.captions and len(args.images) != len(args.captions):
@@ -252,9 +252,9 @@ def main():
     else:
         forward_hook_manager = None
         model.pipe=model.pipe.to("cuda")
-
-    print(args.use_low_vram)
-
+        for i in range(len(model.pipe.modulation_adapters)):
+            model.pipe.modulation_adapters[i] = model.pipe.modulation_adapters[i].to("cuda")
+    
     for i in range(10):
         image = generate_image(
             model,

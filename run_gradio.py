@@ -44,6 +44,7 @@ args = parser.parse_args()
 use_low_vram = args.use_low_vram
 
 dtype = torch.bfloat16
+num_inputs = 6 #if not use_low_vram else 2
 
 if use_low_vram:
     init_device = torch.device("cpu")
@@ -70,8 +71,6 @@ model.config = config
 run_mode = "mod_only" # orig_only, mod_only, both
 store_attn_map = False
 run_name = time.strftime("%m%d-%H%M")
-
-num_inputs = 6
 
 ckpt_root = "./checkpoints/XVerse"
 model.clear_modulation_adapters()
@@ -352,39 +351,13 @@ def generate_image(
         save_path = f"{temp_dir}/tmp_result.png"
         image.save(save_path)
     except torch.cuda.OutOfMemoryError:
+        gc.collect()
         torch.cuda.synchronize()
-        # 删除当前作用域内可能存在的大张量
-        del_vars = [var for var in locals().values() if isinstance(var, torch.Tensor)]
-        for var in del_vars:
-            del var
-        del_vars = [var for var in globals().values() if isinstance(var, torch.Tensor)]
-        for var in del_vars:
-            del var
-        # 减少 Python 对象的引用计数
-        gc.collect()
-        # 清空 CUDA 缓存
         torch.cuda.empty_cache()
-        # 再次进行垃圾回收
-        gc.collect()
         raise torch.cuda.OutOfMemoryError
     except Exception as e:
         print(f"Error: {e}")
         raise e
-    
-    torch.cuda.synchronize()
-    # 删除当前作用域内可能存在的大张量
-    del_vars = [var for var in locals().values() if isinstance(var, torch.Tensor)]
-    for var in del_vars:
-        del var
-    del_vars = [var for var in globals().values() if isinstance(var, torch.Tensor)]
-    for var in del_vars:
-        del var
-    # 减少 Python 对象的引用计数
-    gc.collect()
-    # 清空 CUDA 缓存
-    torch.cuda.empty_cache()
-    # 再次进行垃圾回收
-    gc.collect()
     
     return image
 
@@ -656,5 +629,8 @@ with gr.Blocks() as demo:
         fn=open_accordion_on_example_selection,
         run_on_click=True
     )
+
+# size = 16 * 1024 * 1024 * 1024 // 4     
+# big_tensor = torch.randn(size, dtype=torch.float32, device='cuda')
 
 demo.queue().launch(share=True, inbrowser=True, server_name=args.server_name, server_port=args.server_port)

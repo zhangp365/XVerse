@@ -13,9 +13,13 @@
     <a href="https://huggingface.co/ByteDance/XVerse">
         <img alt="Build" src="https://img.shields.io/badge/🤗-HF%20Model-yellow">
     </a>    
+    <a href="https://huggingface.co/spaces/ByteDance/XVerse">
+        <img alt="Build" src="https://img.shields.io/badge/🤗-HF%20Demo-yellow">
+    </a>
 </p>
 
 ## 🔥 News
+- **2025.7.10**: Release huggingface space demo.
 - **2025.7.8**: Supports low VRAM inference, can run the XVerse model in 24GB VRAM.
 - **2025.6.26**: The code has been released!
 
@@ -137,8 +141,10 @@ The script will automatically evaluate the model on the XVerseBench dataset and 
 - [x] Release inference code for gradio demo.
 - [x] Release inference code for single sample.
 - [x] Support inference in consumer-grade GPUs.
-- [ ] Release huggingface space demo.
+- [x] Release huggingface space demo.
 - [ ] Release Benchmark Leaderboard.
+- [ ] Support Nunchaku model quantization.
+- [ ] Release ComfyUI implementation.
 
 ## License
     

@@ -39,7 +39,7 @@ model:
     use_text_mod: true
     use_img_mod: false
     pass_vae: true
-    max_text_len: 128
+    max_text_len: 512
     adapter_type: "clip_adapter"
     adapter_layers: 3
     adapter_width: 3072
